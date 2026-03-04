@@ -1,0 +1,1 @@
+# Discovers and registers adventures

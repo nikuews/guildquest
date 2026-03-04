@@ -1,0 +1,1 @@
+# TimedRaid Adventure class
