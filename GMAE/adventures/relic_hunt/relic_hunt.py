@@ -7,7 +7,10 @@ import random
 
 from GMAE.adventures.base_adventure import MiniAdventure
 from GMAE.adventures.relic_hunt.maps import RELIC_HUNT_LEGEND
+from GMAE.display.world_clock import WorldClock
 
+
+clock = WorldClock()
 
 class RelicHuntAdventure(MiniAdventure):
     adventure_id = "relic_hunt"
@@ -16,6 +19,7 @@ class RelicHuntAdventure(MiniAdventure):
     description = "Collect relics before your opponent."
 
     def __init__(self) -> None:
+        clock.increment_time(30)
         self.rows = 6
         self.cols = 8
         self.reset()
