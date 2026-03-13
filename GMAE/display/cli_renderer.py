@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from GMAE.engine.adventure_registry import AdventureInfo
+from GMAE.display.world_clock import WorldClock
 
+clock = WorldClock()
 
 class CliRenderer:
     def show_welcome(self) -> None:
@@ -64,9 +66,11 @@ class CliRenderer:
         print()
         print("-- Adventure Complete --")
         print(outcome.get("summary", "Adventure ended."))
+        print(clock)
 
         scores = outcome.get("scores", {})
         if scores:
             print("Results:")
             for key, value in scores.items():
                 print(f"- {key}: {value}")
+        

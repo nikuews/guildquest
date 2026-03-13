@@ -6,7 +6,10 @@ from typing import Any
 
 from GMAE.adventures.base_adventure import MiniAdventure
 from GMAE.adventures.timed_raid.objectives import RaidObjective, build_default_objectives
+from GMAE.display.world_clock import WorldClock
 
+
+clock = WorldClock()
 
 class TimedRaidAdventure(MiniAdventure):
     adventure_id = "timed_raid"
@@ -15,6 +18,7 @@ class TimedRaidAdventure(MiniAdventure):
     description = "Complete shared objectives before time expires."
 
     def __init__(self) -> None:
+        clock.increment_time(30)
         self.reset()
 
     def start(self, player_names: list[str]) -> None:
