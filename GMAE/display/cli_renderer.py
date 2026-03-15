@@ -15,7 +15,7 @@ class CliRenderer:
         print()
 
     def ask_player_name(self, index: int) -> str:
-        return input(f"Player {index}, enter your character name: ").strip()
+        return input(f"Player {index}, enter your user name: ").strip()
 
     def show_adventure_menu(self, options: list[AdventureInfo]) -> str:
         print()
