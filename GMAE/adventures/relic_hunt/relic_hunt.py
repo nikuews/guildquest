@@ -9,6 +9,12 @@ from GMAE.adventures.base_adventure import MiniAdventure
 from GMAE.adventures.relic_hunt.maps import RELIC_HUNT_LEGEND
 from GMAE.display.world_clock import WorldClock
 
+from GMAE.domain.inventory import (
+    Inventory,
+    shield_amulet,
+    relic_shard,
+)
+
 
 clock = WorldClock()
 
@@ -35,6 +41,14 @@ class RelicHuntAdventure(MiniAdventure):
         self._complete = False
         self._winner = None
         self._last_message = "Adventure started."
+        self._inventories = {
+            0: Inventory(max_slots=5, max_weight=10.0),
+            1: Inventory(max_slots=5, max_weight=10.0),
+        }
+
+        # Give each player a starting shield amulet
+        self._inventories[0].add(shield_amulet(), 1)
+        self._inventories[1].add(shield_amulet(), 1)
 
         used = set()
 
@@ -65,6 +79,8 @@ class RelicHuntAdventure(MiniAdventure):
             self._obstacles.add(pos)
 
     def get_state(self) -> dict[str, Any]:
+        active_inv = self._inventories[self._active_player]
+        inv_lines = active_inv.summary_lines()
         return {
             "adventure_title": self.name,
             "mode": self.mode,
@@ -77,6 +93,7 @@ class RelicHuntAdventure(MiniAdventure):
             "legend": RELIC_HUNT_LEGEND,
             "active_player_index": self._active_player,
             "status_line": self._last_message,
+            "inventory_lines": inv_lines,
         }
 
     def get_actions_for_player(self, player_index: int) -> list[str]:
@@ -113,7 +130,8 @@ class RelicHuntAdventure(MiniAdventure):
             if pos in self._relics:
                 self._relics.remove(pos)
                 self._scores[actor] += 1
-                self._last_message = f"{actor} picked up a relic."
+                self._inventories[player_index].add(relic_shard(), 1)
+                self._last_message = f"{actor} picked up a relic!"
             else:
                 self._last_message = f"No relic here for {actor}."
         elif normalized.startswith("move"):
@@ -139,11 +157,24 @@ class RelicHuntAdventure(MiniAdventure):
             self._last_message = f"{actor} moved {direction.upper()}."
 
             if (new_row, new_col) in self._hazards:
-                self._last_message += " A hazard was triggered!"
+                inv = self._inventories[player_index]
+                if inv.has("shield_amulet"):
+                    result = inv.use_item("shield_amulet")
+                    self._last_message += " Hazard blocked by Shield Amulet!"
+                else:
+                    self._last_message += " A hazard was triggered! (-1 relic)"
+                    if self._scores[actor] > 0:
+                        self._scores[actor] -= 1
+                        inv.remove("relic_shard", 1)
         elif normalized == "use item":
-            self._last_message = f"{actor} used an item (placeholder effect)."
+            inv = self._inventories[player_index]
+            if inv.has("shield_amulet"):
+                self._last_message = f"{actor} has a Shield Amulet — it will block the next hazard automatically."
+            else:
+                self._last_message = f"{actor} has no usable items."
         else:
             self._last_message = f"{actor} performed '{action}' (placeholder)."
+
         if self._scores[actor] >= 3:
             self._complete = True
             self._winner = actor
@@ -176,26 +207,6 @@ class RelicHuntAdventure(MiniAdventure):
             "scores": self._scores.copy(),
         }
 
-    def _render_board(self) -> list[str]:
-        grid = [["." for _ in range(self.cols)] for _ in range(self.rows)]
-
-        for r, c in self._obstacles:
-            grid[r][c] = "#"
-
-        for r, c in self._hazards:
-            grid[r][c] = "H"
-
-        for r, c in self._relics:
-            grid[r][c] = "R"
-
-        p1r, p1c = self._player_positions[0]
-        p2r, p2c = self._player_positions[1]
-
-        grid[p1r][p1c] = "1"
-        grid[p2r][p2c] = "2"
-
-        return [" ".join(row) for row in grid]
-
     def reset(self) -> None:
         self._players = ["Player 1", "Player 2"]
         self._scores = {"Player 1": 0, "Player 2": 0}
@@ -208,6 +219,7 @@ class RelicHuntAdventure(MiniAdventure):
         self._relics = set()
         self._hazards = set()
         self._obstacles = set()
+        self._inventories = {0: Inventory(), 1: Inventory()}
 
     def _random_empty_cell(self, used: set[tuple[int, int]]) -> tuple[int, int]:
         while True:

@@ -51,7 +51,14 @@ class CliRenderer:
             print()
             print("Objectives:")
             for line in objective_lines:
-                print(f"- {line}")
+                print(f"  {line}")
+
+        inventory_lines = state.get("inventory_lines", [])
+        if inventory_lines:
+            print()
+            print("Inventory:")
+            for line in inventory_lines:
+                print(f"  {line}")
 
         status_line = state.get("status_line")
         if status_line:
@@ -72,5 +79,4 @@ class CliRenderer:
         if scores:
             print("Results:")
             for key, value in scores.items():
-                print(f"- {key}: {value}")
-        
+                print(f"  {key}: {value}")

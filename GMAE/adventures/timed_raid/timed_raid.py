@@ -20,6 +20,11 @@ from GMAE.adventures.timed_raid.entities import (
 from GMAE.adventures.timed_raid.objectives import RaidObjective, build_default_objectives
 from GMAE.display.world_clock import KeepTime, WorldClock
 
+from GMAE.domain.inventory import (
+    Inventory,
+    shield_amulet,
+)
+
 
 clock = WorldClock()
 
@@ -45,6 +50,13 @@ class TimedRaidAdventure(MiniAdventure):
         self._complete = False
         self._success = False
         self._failure_reason = ""
+
+        self._inventories = {
+            0: Inventory(max_slots=5, max_weight=10.0),
+            1: Inventory(max_slots=5, max_weight=10.0),
+        }
+        self._inventories[0].add(shield_amulet(), 1)
+        self._inventories[1].add(shield_amulet(), 1)
 
         used: set[tuple[int, int]] = set()
         p1 = self._random_empty_cell(used)
@@ -86,6 +98,9 @@ class TimedRaidAdventure(MiniAdventure):
             row, col = objective.node
             objective_lines.append(f"{marker} {objective.name} @ ({row}, {col})")
 
+        active_inv = self._inventories[self._active_player]
+        inv_lines = active_inv.summary_lines()
+
         minutes_remaining = self._minutes_until_deadline()
         return {
             "adventure_title": self.name,
@@ -110,6 +125,7 @@ class TimedRaidAdventure(MiniAdventure):
             "objective_lines": objective_lines,
             "active_player_index": self._active_player,
             "status_line": self._last_message,
+            "inventory_lines": inv_lines,
         }
 
     def get_actions_for_player(self, player_index: int) -> list[str]:
@@ -163,9 +179,15 @@ class TimedRaidAdventure(MiniAdventure):
 
             self._player_positions[player_index] = (new_row, new_col)
             self._last_message = f"{actor} moved {direction.upper()}."
+
             if (new_row, new_col) in self._hazards:
-                elapsed_minutes += HAZARD_TIME_PENALTY_MINUTES
-                self._last_message += f" Hazard delay (+{HAZARD_TIME_PENALTY_MINUTES}m)."
+                inv = self._inventories[player_index]
+                if inv.has("shield_amulet"):
+                    inv.use_item("shield_amulet")
+                    self._last_message += " Hazard blocked by Shield Amulet! No time penalty."
+                else:
+                    elapsed_minutes += HAZARD_TIME_PENALTY_MINUTES
+                    self._last_message += f" Hazard delay (+{HAZARD_TIME_PENALTY_MINUTES}m)."
 
         elif normalized == "complete objective":
             actor_pos = self._player_positions[player_index]
@@ -189,12 +211,12 @@ class TimedRaidAdventure(MiniAdventure):
                 self._last_message = f"{actor} prepared node for objective: {objective.name}."
 
         elif normalized == "use item":
-            actor_pos = self._player_positions[player_index]
-            if actor_pos in self._hazards:
-                self._hazards.remove(actor_pos)
-                self._last_message = f"{actor} cleared a hazard with an item."
+            inv = self._inventories[player_index]
+            if inv.has("shield_amulet"):
+                self._last_message = f"{actor} has a Shield Amulet — it will block the next hazard automatically."
             else:
-                self._last_message = f"{actor} used an item, but no hazard was present."
+                self._last_message = f"{actor} has no usable items."
+            return
 
         else:
             self._last_message = f"{actor} performed '{action}' (placeholder)."
@@ -252,6 +274,7 @@ class TimedRaidAdventure(MiniAdventure):
         self._obstacles: set[tuple[int, int]] = set()
         self._window_start = clock.get_time()
         self._window_end = self._window_start.add_time(RAID_WINDOW_MINUTES)
+        self._inventories = {0: Inventory(), 1: Inventory()}
 
     def _objective_at(self, position: tuple[int, int]) -> RaidObjective | None:
         return next((objective for objective in self._objectives if objective.node == position), None)
