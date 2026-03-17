@@ -15,13 +15,13 @@ class MenuSystem:
             raw = ask(options)
             try:
                 selected = int(raw.strip())
-                clock.increment_time(1)
+                clock.increment_time(5)
             except ValueError:
                 print("Enter a number from the menu.")
-                clock.increment_time(1)
+                clock.increment_time(6)
                 continue
 
             if any(option.index == selected for option in options):
-                clock.increment_time(1)
+                clock.increment_time(8)
                 return selected
             print("Invalid choice. Try again.")

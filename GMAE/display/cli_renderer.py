@@ -19,6 +19,7 @@ class CliRenderer:
 
     def show_adventure_menu(self, options: list[AdventureInfo]) -> str:
         print()
+        print(clock)
         print("-- Select a Mini-Adventure --")
         for option in options:
             print(f"{option.index}. {option.title} ({option.mode})")

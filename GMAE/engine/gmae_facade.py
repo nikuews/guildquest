@@ -9,8 +9,9 @@ from GMAE.engine.menu_system import MenuSystem
 from GMAE.profiles.player_profile import PlayerProfile
 from GMAE.profiles.profile_manager import ProfileManager
 from GMAE.profiles.profile_proxy import ProfileProxy
+from GMAE.display.world_clock import WorldClock
 
-
+clock = WorldClock()
 class GmaeFacade:
     def __init__(self) -> None:
         self._renderer = CliRenderer()
@@ -21,16 +22,19 @@ class GmaeFacade:
 
     def run(self) -> None:
         self._renderer.show_welcome()
+        print(clock)
 
         while True:
             first = self._renderer.ask_player_name(1)
             second = self._renderer.ask_player_name(2)
             try:
                 profile_one, profile_two = self._profiles.get_two_distinct_profiles(first, second)
+                clock.increment_time(2)
                 break
             except ValueError as error:
                 print(error)
                 print("Please try entering names again.\n")
+                clock.increment_time(1)
 
         self._configure_selected_character(profile_one, player_index=1)
         self._configure_selected_character(profile_two, player_index=2)
@@ -61,6 +65,7 @@ class GmaeFacade:
             print()
             print("Enter character id to select, N to create new, or press Enter to keep current.")
             raw = input("Choice: ").strip()
+            clock.increment_time(5)
 
             if raw == "":
                 if profile.selected_character is None:
@@ -87,12 +92,14 @@ class GmaeFacade:
                         f"Selected: {chosen.name} "
                         f"({chosen.character_class.value}, Lv {chosen.level})"
                     )
+                    clock.increment_time(2)
                 return
             except ValueError as error:
                 print(error)
 
     def _create_character(self, profile: PlayerProfile, player_index: int) -> None:
         while True:
+            clock.increment_time(3)
             name = input(f"Player {player_index}, new character name: ").strip()
             class_raw = input(
                 "Class [WARRIOR/ASSASSIN/MAGE]: "
