@@ -1,4 +1,10 @@
-"""Terminal renderer for GMAE interface flows."""
+"""Terminal renderer for GMAE interface flows.
+
+The renderer subscribes to the EventBus (Observer pattern) via its
+on_game_event() method.  The engine wires up the subscription —
+the renderer itself doesn't know about the bus, keeping display
+logic decoupled from event infrastructure.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +13,11 @@ from GMAE.display.world_clock import WorldClock
 
 clock = WorldClock()
 
+
 class CliRenderer:
+    def __init__(self) -> None:
+        self._event_log: list[str] = []
+
     def show_welcome(self) -> None:
         print("=" * 47)
         print("   Welcome to GuildQuest Adventures!")
@@ -25,11 +35,21 @@ class CliRenderer:
             print(f"{option.index}. {option.title} ({option.mode})")
         return input("\nChoice: ").strip()
 
+    def on_game_event(self, payload: dict) -> None:
+        event_type = payload.get("event", "unknown")
+        message = payload.get("message", "")
+
+        if message:
+            self._event_log.append(f"  >> {message}")
+
     def render_adventure_state(self, state: dict) -> None:
         print()
         print(f"-- {state['adventure_title']} ({state['mode']}) --")
 
-        scoreboard = " | ".join(f"{part['name']}: {part['value']}" for part in state.get("scoreboard", []))
+        scoreboard = " | ".join(
+            f"{part['name']}: {part['value']}"
+            for part in state.get("scoreboard", [])
+        )
         if scoreboard:
             print(f"Turn: {state.get('turn', '?')} | {scoreboard}")
 
@@ -60,6 +80,13 @@ class CliRenderer:
             print("Inventory:")
             for line in inventory_lines:
                 print(f"  {line}")
+
+        if self._event_log:
+            print()
+            print("Events:")
+            for entry in self._event_log:
+                print(entry)
+            self._event_log.clear()
 
         status_line = state.get("status_line")
         if status_line:

@@ -1,4 +1,4 @@
-"""Relic Hunt adventure (interface-first placeholder behavior)."""
+"""Relic Hunt adventure with domain inventory and event publishing."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from GMAE.domain.inventory import (
 
 clock = WorldClock()
 
+
 class RelicHuntAdventure(MiniAdventure):
     adventure_id = "relic_hunt"
     name = "Relic Hunt"
@@ -28,7 +29,17 @@ class RelicHuntAdventure(MiniAdventure):
         clock.increment_time(30)
         self.rows = 6
         self.cols = 8
+        self._facade = None
         self.reset()
+
+    def set_facade(self, facade: Any) -> None:
+        """Receive the AdventureFacade from the engine."""
+        self._facade = facade
+
+    def _publish(self, event_name: str, payload: dict) -> None:
+        """Publish an event if the facade is available."""
+        if self._facade is not None:
+            self._facade.publish_event(event_name, payload)
 
     def start(self, player_names: list[str]) -> None:
         if len(player_names) != 2:
@@ -46,7 +57,6 @@ class RelicHuntAdventure(MiniAdventure):
             1: Inventory(max_slots=5, max_weight=10.0),
         }
 
-        # Give each player a starting shield amulet
         self._inventories[0].add(shield_amulet(), 1)
         self._inventories[1].add(shield_amulet(), 1)
 
@@ -132,8 +142,17 @@ class RelicHuntAdventure(MiniAdventure):
                 self._scores[actor] += 1
                 self._inventories[player_index].add(relic_shard(), 1)
                 self._last_message = f"{actor} picked up a relic!"
+
+                self._publish("relic_collected", {
+                    "event": "relic_collected",
+                    "message": f"{actor} found a relic! ({self._scores[actor]} total)",
+                    "player": actor,
+                    "score": self._scores[actor],
+                    "relics_remaining": len(self._relics),
+                })
             else:
                 self._last_message = f"No relic here for {actor}."
+
         elif normalized.startswith("move"):
             direction = normalized.split()[-1].lower()
             dr, dc = self._direction_delta(direction)
@@ -143,35 +162,45 @@ class RelicHuntAdventure(MiniAdventure):
 
             if not (0 <= new_row < self.rows and 0 <= new_col < self.cols):
                 self._last_message = f"{actor} hit the edge of the map."
-                return
-
-            if (new_row, new_col) in self._obstacles:
+            elif (new_row, new_col) in self._obstacles:
                 self._last_message = f"{actor} hit an obstacle."
-                return
-
-            if (new_row, new_col) == self._player_positions[1 - player_index]:
+            elif (new_row, new_col) == self._player_positions[1 - player_index]:
                 self._last_message = f"{actor} cannot move onto the other player."
-                return
+            else:
+                self._player_positions[player_index] = (new_row, new_col)
+                self._last_message = f"{actor} moved {direction.upper()}."
 
-            self._player_positions[player_index] = (new_row, new_col)
-            self._last_message = f"{actor} moved {direction.upper()}."
+                if (new_row, new_col) in self._hazards:
+                    inv = self._inventories[player_index]
+                    if inv.has("shield_amulet"):
+                        inv.use_item("shield_amulet")
+                        self._last_message += " Hazard blocked by Shield Amulet!"
 
-            if (new_row, new_col) in self._hazards:
-                inv = self._inventories[player_index]
-                if inv.has("shield_amulet"):
-                    result = inv.use_item("shield_amulet")
-                    self._last_message += " Hazard blocked by Shield Amulet!"
-                else:
-                    self._last_message += " A hazard was triggered! (-1 relic)"
-                    if self._scores[actor] > 0:
-                        self._scores[actor] -= 1
-                        inv.remove("relic_shard", 1)
+                        self._publish("hazard_blocked", {
+                            "event": "hazard_blocked",
+                            "message": f"{actor}'s Shield Amulet absorbed the hazard!",
+                            "player": actor,
+                        })
+                    else:
+                        self._last_message += " A hazard was triggered! (-1 relic)"
+                        if self._scores[actor] > 0:
+                            self._scores[actor] -= 1
+                            inv.remove("relic_shard", 1)
+
+                        self._publish("hazard_triggered", {
+                            "event": "hazard_triggered",
+                            "message": f"{actor} hit a hazard! Lost a relic.",
+                            "player": actor,
+                            "score": self._scores[actor],
+                        })
+
         elif normalized == "use item":
             inv = self._inventories[player_index]
             if inv.has("shield_amulet"):
                 self._last_message = f"{actor} has a Shield Amulet — it will block the next hazard automatically."
             else:
                 self._last_message = f"{actor} has no usable items."
+            return
         else:
             self._last_message = f"{actor} performed '{action}' (placeholder)."
 

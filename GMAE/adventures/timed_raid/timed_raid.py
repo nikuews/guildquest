@@ -1,4 +1,4 @@
-"""Timed Raid adventure with a realm-local raid window."""
+"""Timed Raid adventure with realm-local raid window and event publishing."""
 
 from __future__ import annotations
 
@@ -38,7 +38,15 @@ class TimedRaidAdventure(MiniAdventure):
     def __init__(self) -> None:
         self.rows = BOARD_ROWS
         self.cols = BOARD_COLS
+        self._facade = None
         self.reset()
+
+    def set_facade(self, facade: Any) -> None:
+        self._facade = facade
+
+    def _publish(self, event_name: str, payload: dict) -> None:
+        if self._facade is not None:
+            self._facade.publish_event(event_name, payload)
 
     def start(self, player_names: list[str]) -> None:
         if len(player_names) != 2:
@@ -169,25 +177,34 @@ class TimedRaidAdventure(MiniAdventure):
 
             if not (0 <= new_row < self.rows and 0 <= new_col < self.cols):
                 self._last_message = f"{actor} hit the edge of the map."
-                return
-            if (new_row, new_col) in self._obstacles:
+            elif (new_row, new_col) in self._obstacles:
                 self._last_message = f"{actor} hit an obstacle."
-                return
-            if (new_row, new_col) == self._player_positions[1 - player_index]:
+            elif (new_row, new_col) == self._player_positions[1 - player_index]:
                 self._last_message = f"{actor} cannot move onto the other player."
-                return
+            else:
+                self._player_positions[player_index] = (new_row, new_col)
+                self._last_message = f"{actor} moved {direction.upper()}."
 
-            self._player_positions[player_index] = (new_row, new_col)
-            self._last_message = f"{actor} moved {direction.upper()}."
+                if (new_row, new_col) in self._hazards:
+                    inv = self._inventories[player_index]
+                    if inv.has("shield_amulet"):
+                        inv.use_item("shield_amulet")
+                        self._last_message += " Hazard blocked by Shield Amulet! No time penalty."
 
-            if (new_row, new_col) in self._hazards:
-                inv = self._inventories[player_index]
-                if inv.has("shield_amulet"):
-                    inv.use_item("shield_amulet")
-                    self._last_message += " Hazard blocked by Shield Amulet! No time penalty."
-                else:
-                    elapsed_minutes += HAZARD_TIME_PENALTY_MINUTES
-                    self._last_message += f" Hazard delay (+{HAZARD_TIME_PENALTY_MINUTES}m)."
+                        self._publish("hazard_blocked", {
+                            "event": "hazard_blocked",
+                            "message": f"{actor}'s Shield Amulet absorbed the hazard!",
+                            "player": actor,
+                        })
+                    else:
+                        elapsed_minutes += HAZARD_TIME_PENALTY_MINUTES
+                        self._last_message += f" Hazard delay (+{HAZARD_TIME_PENALTY_MINUTES}m)."
+
+                        self._publish("hazard_triggered", {
+                            "event": "hazard_triggered",
+                            "message": f"{actor} hit a hazard! +{HAZARD_TIME_PENALTY_MINUTES}m penalty.",
+                            "player": actor,
+                        })
 
         elif normalized == "complete objective":
             actor_pos = self._player_positions[player_index]
@@ -199,6 +216,16 @@ class TimedRaidAdventure(MiniAdventure):
             else:
                 objective.complete = True
                 self._last_message = f"{actor} completed objective: {objective.name}."
+
+                # ── Observer: publish objective_complete event ──
+                completed = sum(o.complete for o in self._objectives)
+                self._publish("objective_complete", {
+                    "event": "objective_complete",
+                    "message": f"Objective complete: {objective.name} ({completed}/{len(self._objectives)})",
+                    "player": actor,
+                    "objective": objective.name,
+                    "progress": f"{completed}/{len(self._objectives)}",
+                })
 
         elif normalized == "interact":
             actor_pos = self._player_positions[player_index]
@@ -222,6 +249,15 @@ class TimedRaidAdventure(MiniAdventure):
             self._last_message = f"{actor} performed '{action}' (placeholder)."
 
         clock.increment_time(elapsed_minutes)
+
+        remaining = self._minutes_until_deadline()
+        if 0 < remaining <= 20:
+            self._publish("raid_window_warning", {
+                "event": "raid_window_warning",
+                "message": f"WARNING: Only {remaining}m left in the raid window!",
+                "minutes_remaining": remaining,
+            })
+
         if self._window_has_ended():
             self._complete = True
             self._success = False
@@ -277,11 +313,10 @@ class TimedRaidAdventure(MiniAdventure):
         self._inventories = {0: Inventory(), 1: Inventory()}
 
     def _objective_at(self, position: tuple[int, int]) -> RaidObjective | None:
-        return next((objective for objective in self._objectives if objective.node == position), None)
+        return next((o for o in self._objectives if o.node == position), None)
 
     def _render_board(self) -> list[str]:
         grid = [["." for _ in range(self.cols)] for _ in range(self.rows)]
-
         for row, col in self._obstacles:
             grid[row][col] = "#"
         for row, col in self._hazards:
@@ -289,7 +324,6 @@ class TimedRaidAdventure(MiniAdventure):
         for objective in self._objectives:
             row, col = objective.node
             grid[row][col] = "o" if objective.complete else "O"
-
         p1_row, p1_col = self._player_positions[0]
         p2_row, p2_col = self._player_positions[1]
         grid[p1_row][p1_col] = "1"
@@ -303,12 +337,7 @@ class TimedRaidAdventure(MiniAdventure):
                 return position
 
     def _direction_delta(self, direction: str) -> tuple[int, int]:
-        deltas = {
-            "n": (-1, 0),
-            "s": (1, 0),
-            "e": (0, 1),
-            "w": (0, -1),
-        }
+        deltas = {"n": (-1, 0), "s": (1, 0), "e": (0, 1), "w": (0, -1)}
         if direction not in deltas:
             raise ValueError(f"Invalid movement direction: {direction}")
         return deltas[direction]
